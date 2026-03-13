@@ -8,25 +8,29 @@ import plotly.graph_objects as go
 st.set_page_config(page_title="김치프리미엄 대시보드", layout="wide", page_icon="₿")
 
 st.title("₿ 비트코인 실시간 시세 & 김치 프리미엄 대시보드")
-st.markdown("**Upbit • Bithumb vs Binance** 실시간 업데이트 (5초 자동 갱신)")
+st.markdown("**Upbit • Bithumb vs CoinGecko** 실시간 업데이트 (5초 자동 갱신)")
 
-# --- 공통 헤더 (API 오류 방지 핵심!) ---
+# 헤더 강화 (차단 방지)
 headers = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+    'Accept': 'application/json'
 }
 
-# --- 데이터 가져오기 함수 (수정됨) ---
 def fetch_data():
     try:
-        # 1. Binance BTC/USDT
-        binance_resp = requests.get("https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT", headers=headers, timeout=10)
-        binance_price = float(binance_resp.json()['price'])
+        # 1. CoinGecko BTC USD (Binance 대신 사용 → Cloud에서도 안정적!)
+        cg_resp = requests.get(
+            "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd",
+            headers=headers, timeout=10
+        )
+        cg_data = cg_resp.json()
+        binance_price = float(cg_data['bitcoin']['usd'])
 
-        # 2. Upbit KRW-BTC
+        # 2. Upbit
         upbit_resp = requests.get("https://api.upbit.com/v1/ticker?markets=KRW-BTC", headers=headers, timeout=10)
         upbit_price = float(upbit_resp.json()[0]['trade_price'])
 
-        # 3. Bithumb BTC_KRW
+        # 3. Bithumb
         bithumb_resp = requests.get("https://api.bithumb.com/public/ticker/BTC_KRW", headers=headers, timeout=10)
         bithumb_price = float(bithumb_resp.json()['data']['closing_price'])
 
@@ -42,16 +46,19 @@ def fetch_data():
             "time": datetime.now()
         }
     except Exception as e:
-        st.error(f"API 오류: {str(e)[:80]}... (네트워크 지연일 수 있어요. 10초 후 다시 시도)")
+        error_msg = str(e)[:100]
+        st.error(f"API 오류: {error_msg}... (10초 후 자동 재시도 중)")
+        st.info("현재 데이터 일부만 표시됩니다. 잠시 기다려주세요.")
         return None
 
-# 나머지 코드는 그대로 (Session State, 메인 대시보드, 차트 등)
+# Session State
 if 'price_history' not in st.session_state:
     st.session_state.price_history = []
 
 data = fetch_data()
 
 if data:
+    # ... (이 아래는 이전 코드와 100% 동일합니다. 그대로 복사해서 붙이세요)
     binance = data["binance"]
     upbit = data["upbit"]
     bithumb = data["bithumb"]
@@ -65,7 +72,7 @@ if data:
 
     col1, col2, col3, col4 = st.columns([1,1,1,0.8])
     with col1:
-        st.metric(label="**Binance (USD)**", value=f"${binance:,.0f}")
+        st.metric(label="**CoinGecko (USD)**", value=f"${binance:,.0f}")
     with col2:
         delta = f"김프 {premium_upbit:+.1f}%"
         st.metric(label="**Upbit (KRW)**", value=f"₩{upbit:,.0f}", delta=delta)
