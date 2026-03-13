@@ -10,7 +10,7 @@ st.set_page_config(page_title="김치프리미엄 대시보드", layout="wide", 
 st.title("₿ 비트코인 실시간 시세 & 김치 프리미엄 대시보드")
 st.markdown("**Upbit • Bithumb vs CoinGecko** 실시간 업데이트 (5초 자동 갱신)")
 
-# 헤더 강화 (차단 방지)
+# 헤더 강화
 headers = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
     'Accept': 'application/json'
@@ -18,13 +18,12 @@ headers = {
 
 def fetch_data():
     try:
-        # 1. CoinGecko BTC USD (Binance 대신 사용 → Cloud에서도 안정적!)
+        # 1. CoinGecko BTC USD (안정적)
         cg_resp = requests.get(
             "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd",
             headers=headers, timeout=10
         )
-        cg_data = cg_resp.json()
-        binance_price = float(cg_data['bitcoin']['usd'])
+        binance_price = float(cg_resp.json()['bitcoin']['usd'])
 
         # 2. Upbit
         upbit_resp = requests.get("https://api.upbit.com/v1/ticker?markets=KRW-BTC", headers=headers, timeout=10)
@@ -34,9 +33,9 @@ def fetch_data():
         bithumb_resp = requests.get("https://api.bithumb.com/public/ticker/BTC_KRW", headers=headers, timeout=10)
         bithumb_price = float(bithumb_resp.json()['data']['closing_price'])
 
-        # 4. Dunamu 환율
-        rate_resp = requests.get("https://quotation-api-cdn.dunamu.com/v1/forex/recent?codes=FRX.KRWUSD", headers=headers, timeout=10)
-        usd_krw = float(rate_resp.json()[0]['basePrice'])
+        # 4. 환율 (Dunamu → 해외 안정 API 교체!)
+        rate_resp = requests.get("https://api.exchangerate.host/latest?base=USD&symbols=KRW", headers=headers, timeout=10)
+        usd_krw = float(rate_resp.json()['rates']['KRW'])
 
         return {
             "binance": round(binance_price, 2),
@@ -46,9 +45,9 @@ def fetch_data():
             "time": datetime.now()
         }
     except Exception as e:
-        error_msg = str(e)[:100]
+        error_msg = str(e)[:120]
         st.error(f"API 오류: {error_msg}... (10초 후 자동 재시도 중)")
-        st.info("현재 데이터 일부만 표시됩니다. 잠시 기다려주세요.")
+        st.info("네트워크 지연일 수 있어요. 잠시 기다려주세요.")
         return None
 
 # Session State
@@ -58,7 +57,6 @@ if 'price_history' not in st.session_state:
 data = fetch_data()
 
 if data:
-    # ... (이 아래는 이전 코드와 100% 동일합니다. 그대로 복사해서 붙이세요)
     binance = data["binance"]
     upbit = data["upbit"]
     bithumb = data["bithumb"]
