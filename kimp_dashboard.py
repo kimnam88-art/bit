@@ -8,47 +8,58 @@ import plotly.graph_objects as go
 st.set_page_config(page_title="김치프리미엄 대시보드", layout="wide", page_icon="₿")
 
 st.title("₿ 비트코인 실시간 시세 & 김치 프리미엄 대시보드")
-st.markdown("**Upbit • Bithumb vs CoinGecko** 실시간 업데이트 (5초 자동 갱신)")
+st.markdown("**Upbit • Bithumb vs CoinGecko** (10초 자동 갱신)")
 
-# 헤더 강화
 headers = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
     'Accept': 'application/json'
 }
 
+# 이전 성공 데이터 저장 (오류 시 fallback)
+if 'last_data' not in st.session_state:
+    st.session_state.last_data = None
+
 def fetch_data():
-    try:
-        # CoinGecko에서 USD + KRW 동시에 가져오기 (환율 API 완전 제거!)
-        cg_resp = requests.get(
-            "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd,krw",
-            headers=headers, timeout=10
-        )
-        cg = cg_resp.json()['bitcoin']
-        global_usd = float(cg['usd'])
-        global_krw = float(cg['krw'])
+    for attempt in range(3):  # 3번 재시도
+        try:
+            # CoinGecko USD + KRW 동시에
+            cg_resp = requests.get(
+                "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd,krw",
+                headers=headers, timeout=5
+            )
+            cg_resp.raise_for_status()
+            cg = cg_resp.json()['bitcoin']
+            global_usd = float(cg['usd'])
+            global_krw = float(cg['krw'])
 
-        # Upbit
-        upbit_resp = requests.get("https://api.upbit.com/v1/ticker?markets=KRW-BTC", headers=headers, timeout=10)
-        upbit_price = float(upbit_resp.json()[0]['trade_price'])
+            # Upbit
+            upbit_resp = requests.get("https://api.upbit.com/v1/ticker?markets=KRW-BTC", headers=headers, timeout=5)
+            upbit_price = float(upbit_resp.json()[0]['trade_price'])
 
-        # Bithumb
-        bithumb_resp = requests.get("https://api.bithumb.com/public/ticker/BTC_KRW", headers=headers, timeout=10)
-        bithumb_price = float(bithumb_resp.json()['data']['closing_price'])
+            # Bithumb
+            bithumb_resp = requests.get("https://api.bithumb.com/public/ticker/BTC_KRW", headers=headers, timeout=5)
+            bithumb_price = float(bithumb_resp.json()['data']['closing_price'])
 
-        return {
-            "global_usd": round(global_usd, 2),
-            "global_krw": int(global_krw),
-            "upbit": int(upbit_price),
-            "bithumb": int(bithumb_price),
-            "time": datetime.now()
-        }
-    except Exception as e:
-        error_msg = str(e)[:120]
-        st.error(f"API 오류: {error_msg}... (10초 후 자동 재시도 중)")
-        st.info("네트워크 지연일 수 있어요. 잠시 기다려주세요.")
-        return None
+            data = {
+                "global_usd": round(global_usd, 2),
+                "global_krw": int(global_krw),
+                "upbit": int(upbit_price),
+                "bithumb": int(bithumb_price),
+                "time": datetime.now()
+            }
+            st.session_state.last_data = data
+            return data
+        except Exception as e:
+            if attempt < 2:
+                time.sleep(1)  # 재시도 전 잠시 대기
+                continue
+            # 3번 모두 실패 시 fallback
+            st.error(f"임시 API 오류 (재시도 중...)")
+            if st.session_state.last_data:
+                st.warning("✅ 이전 데이터로 계속 표시합니다. (실시간은 잠시 후 복구)")
+                return st.session_state.last_data
+            return None
 
-# Session State
 if 'price_history' not in st.session_state:
     st.session_state.price_history = []
 
@@ -60,7 +71,6 @@ if data:
     upbit = data["upbit"]
     bithumb = data["bithumb"]
     
-    # 김프 계산 (CoinGecko KRW 기준)
     premium_upbit = round((upbit / global_krw - 1) * 100, 2)
     premium_bithumb = round((bithumb / global_krw - 1) * 100, 2)
 
@@ -83,7 +93,6 @@ if data:
         color = "🔴" if premium_bithumb > 0 else "🔵"
         st.subheader(f"{color} Bithumb 김치 프리미엄: **{premium_bithumb}%**")
 
-    # 차트 & 기록 (이전과 동일)
     st.session_state.price_history.append({
         'time': data['time'].strftime('%H:%M:%S'),
         'upbit_p': premium_upbit,
@@ -102,10 +111,10 @@ if data:
     st.subheader("최근 10회 기록")
     st.dataframe(df.tail(10)[['time', 'upbit_p', 'bithumb_p']].rename(columns={'upbit_p':'Upbit 김프(%)', 'bithumb_p':'Bithumb 김프(%)'}), use_container_width=True)
 
-st.caption(f"마지막 업데이트: {datetime.now().strftime('%H:%M:%S')} | 자동 5초 갱신 중")
+st.caption(f"마지막 업데이트: {datetime.now().strftime('%H:%M:%S')} | 자동 10초 갱신 중")
 
 if st.button("🔄 지금 바로 새로고침"):
     st.rerun()
 
-time.sleep(5)
+time.sleep(10)  # ← 여기서 10초로 변경 (중요!)
 st.rerun()
